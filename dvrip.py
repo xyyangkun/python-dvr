@@ -1,126 +1,111 @@
 #!/usr/bin/env python
-import json
-import socket
-import binascii
-import sys
-import array
-from codes import check_response_code, lookup_response_code
-import struct
+# -*- coding: utf-8 -*-
 
-def dec_to_rev_hex(integer):
-	"""Accepts an integer and returns a 4 byte list of hex chars
-		in reverse order"""
-
-	byte_list = list(reversed([chr(ord(b)) for b in struct.pack('>I',integer)]))
-	return "".join(byte_list)
-
-def bytes(integer):
-	
-	return divmod(integer, 0x100)
+import os,sys,struct,json
+from time import sleep
+import hashlib
+import threading
+from socket import *
 
 class DVRIPCam(object):
-	def __init__(self, tcp_ip, user="admin", password= "tlJwpbo6", auth = "MD5", tcp_port = 34567):
-		self.tcp_ip = tcp_ip	
+	CODES = {
+		100 : "OK",
+		101 : "Unknown error",
+		102 : "Unsupported version", 
+		103 : "Request not permitted", 
+		104 : "User already logged in",
+		105 : "User is not logged in",
+		106 : "Username or password is incorrect",
+		107 : "User does not have necessary permissions",
+		203 : "Password is incorrect",
+		515 : "Upgrade successful"
+	}
+	OK_CODES = [100,515]
+	def __init__(self, ip, user="admin", password= "", port = 34567):
+		self.ip = ip
 		self.user = user
 		self.password = password
-		self.tcp_port = 34567
-		self.auth = auth
+		self.port = port
 		self.socket = None
 		self.packet_count = 0
-		self.session_int = 0
-		self.session_hex = None
+		self.session = 0
+		self.alive = None
+		self.alive_time = 20
 	def connect(self):
-		self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-		self.socket.connect((self.tcp_ip, self.tcp_port))
-		
+		self.socket = socket(AF_INET, SOCK_STREAM)
+		self.socket.connect((self.ip, self.port))
 	def close(self):
+		self.alive.cancel()
 		self.socket.close()
-	def send_packet(self, msg):	
-		self.socket.send(msg)
-		data = self.socket.recv(5012+5012)
-		return data
-	def clean_response(self, data):
-		cleaned = data[20:].replace(" ", "")
-		cleaned = cleaned[:-2]
-		return cleaned	
-	def build_packet(self, input_data, message_code, encoding = "ascii"):
+		self.socket = None
+	def send(self, msg, data):
+		if self.socket == None:
+			return {"Ret":101}
+		if hasattr(data, '__iter__'):
+			data = json.dumps(data, ensure_ascii=False).encode('utf8')
+		self.socket.send(struct.pack('BB2xII2xHI',255, 0, self.session, self.packet_count, msg ,len(data)+2)+data+"\x0a\x00")
+		try:
+			head, version, self.session, sequence_number, msgid, len_data = struct.unpack('BB2xII2xHI',self.socket.recv(20))
+			sleep(.1)#Just for recive whole packet
+			reply = self.socket.recv(len_data)
+			self.packet_count += 1
+			reply = json.loads(reply[:-2],encoding="utf8")
+			return reply
+		except:
+			return {"Ret":101}
 		
-		if encoding == "hex":
-			data = binascii.unhexlify(input_data)
-
-		elif encoding == "ascii":
-			data = input_data
-		elif encoding == "struct":
-			data = json.dumps(input_data)
-
-
-		high, low = bytes(message_code)
-		
-		#structure of control flow message packet per spec
-		head_flag = "\xFF" 	#One byte fixed value of 0xFF
-		version = "\x00" 	#Version number, currently
-		reserved_01 = "\x00"	#Reserved, fixed value of 0x00
-		reserved_02 = "\x00"	
-		session_id = "\x00" 	#Session id, default 0i
-		unknown_block_0 = "\x00\x00\x00"
-		sequence_number = chr(self.packet_count)     #Number of packets sent in current session
-		unknown_block_1 = "\x00\x00\x00\x00\x00"
-		message_byte_1 = chr(low)  	#message code from definition table, little-endian order
-		message_byte_2 = chr(high)
-
-		
-		data_len = dec_to_rev_hex(len(data)+1) #Size of data in bytes (padded to 4 bytes)
-		data = data + "\x0a"	#ascii data, maximum of 16kb, terminated with a null ascii character
-		
-		packet = head_flag + version + reserved_01 + reserved_02 + session_id + unknown_block_0 + sequence_number + unknown_block_1 + message_byte_1 + message_byte_2 + data_len + data
-		return packet 
-	def send(self, input_data, message_code, encoding = "ascii"):
-		packet = self.build_packet(input_data, message_code, encoding)
-		self.packet_count += 1
-
-		return json.loads(self.clean_response(self.send_packet(packet)))
-	def login(self):	
-		login_creds_struct = { "EncryptType" : self.auth, "LoginType" : "DVRIP-Web", "PassWord" : self.password, "UserName" : self.user }
-		data = self.send(login_creds_struct, 1000, "struct")
-
-		parsed_json = data
-
-		self.session_id_hex = parsed_json["SessionID"]
-		response_code = parsed_json["Ret"]
-
-		if check_response_code(response_code):
-			return True
-		else:
-			return False
+	def sofia_hash(self, password):
+		s = ""
+		md5 = hashlib.md5(password).digest()
+		for n in range(8):
+			c = (ord(md5[2*n])+ord(md5[2*n+1]))%62
+			if c > 9:
+				if c > 35:
+					c += 61
+				else:
+					c += 55
+			else:
+				c += 48
+			s += chr(c)
+		return s
+	def login(self):
+		if self.socket == None:
+			self.connect()
+		data = self.send(1000,{"EncryptType":"MD5","LoginType":"DVRIP-Web","PassWord":self.sofia_hash(self.password),"UserName":self.user})
+		self.session = int(data["SessionID"],16)
+		self.alive_time = data["AliveInterval"]
+		self.keep_alive()
+		return data["Ret"] in self.OK_CODES
 
 	def pretty_print(self, data):
-		print json.dumps(data, indent = 4, sort_keys = True)		
+		print json.dumps(data, indent = 4, sort_keys = True)
 
 	def keep_alive(self):
-		message_struct = {"Name" : "KeepAlive", "SessionID" :self.session_id_hex}
-		data = self.send(message_struct, 1006, "struct")
-		self.pretty_print(data)
-
-	def set_info(self, code, command, cam_struct):
-		data = self.send(cam_struct, 1040, "struct")
-		return data
-	
-	def get_info(self, code, command):
-		info_struct = {"Name" : str(command), "SessionID" : self.session_id_hex}
-		data = self.send(info_struct, code, "struct")
-		return data
-	
+		self.send(1006,{"Name":"KeepAlive","SessionID":"0x%08X"%self.session})
+		self.alive = threading.Timer(self.alive_time, self.keep_alive)
+		self.alive.start()
+	def set_info(self, command, data):
+		return self.set(1040, command, data)
+	def set(self, code, command, data):
+		return self.send(code, {"Name":str(command),"SessionID":"0x%08X"%self.session,str(command):data})
+	def get_info(self, command):
+		return self.get(1042, command)
+	def get(self, code, command):
+		data = self.send(code, {"Name":str(command),"SessionID":"0x%08X"%self.session})
+		if data["Ret"] in self.OK_CODES:
+			return data[str(command)]
+		else:
+			return data
 	def get_system_info(self):
-		data = self.get_info("General", 1042)
-			
+		data = self.get(1042, "General")
 		self.pretty_print(data)
 		
 	def get_encode_capabilities(self):
-		data = self.get_info(1360, "EncodeCapability")
+		data = self.get(1360, "EncodeCapability")
 		self.pretty_print(data)
 	
 	def get_system_capabilities(self):
-		data = self.get_info(1360, "SystemFunction")
+		data = self.get(1360, "SystemFunction")
 		self.pretty_print(data)
 	
 	def get_camera_info(self, default = False):
