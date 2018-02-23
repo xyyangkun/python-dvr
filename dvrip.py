@@ -112,11 +112,11 @@ class DVRIPCam(object):
 		else:
 			return data
 	def get_time(self):
-		return datetime.strptime(self.get(QCODES["OPTimeQuery"],"OPTimeQuery"),self.DATE_FORMAT)
+		return datetime.strptime(self.get(self.QCODES["OPTimeQuery"],"OPTimeQuery"),self.DATE_FORMAT)
 	def set_time(self, time=None):
 		if time==None:
 			time=datetime.now()
-		return self.set(QCODES["OPTimeSetting"],"OPTimeSetting",time.strftime(self.DATE_FORMAT))
+		return self.set(self.QCODES["OPTimeSetting"],"OPTimeSetting",time.strftime(self.DATE_FORMAT))
 	def get_system_info(self):
 		data = self.get(1042, "General")
 		self.pretty_print(data)
