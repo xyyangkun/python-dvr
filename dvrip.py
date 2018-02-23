@@ -6,8 +6,10 @@ from time import sleep
 import hashlib
 import threading
 from socket import *
+from datetime import *
 
 class DVRIPCam(object):
+	DATE_FORMAT="%Y-%m-%d %H:%M:%S"
 	CODES = {
 		100 : "OK",
 		101 : "Unknown error",
@@ -19,6 +21,18 @@ class DVRIPCam(object):
 		107 : "User does not have necessary permissions",
 		203 : "Password is incorrect",
 		515 : "Upgrade successful"
+	}
+	QCODES = {
+		"KeepAlive":1006,
+		"OPTimeQuery":1452,
+		"OPTimeSetting":1450,
+		"OPMailTest":1636,
+		#{ "Name" : "OPMailTest", "OPMailTest" : { "Enable" : true, "MailServer" : { "Address" : "0x00000000", "Anonymity" : false, "Name" : "Your SMTP Server", "Password" : "", "Port" : 25, "UserName" : "" }, "Recievers" : [ "", "none", "none", "none", "none" ], "Schedule" : [ "0 00:00:00-24:00:00", "0 00:00:00-24:00:00" ], "SendAddr" : "", "Title" : "Alarm Message", "UseSSL" : false }, "SessionID" : "0x1" }
+		"OPMachine":1450,
+		"OPMonitor":1413,
+		"OPTalk":1434,
+		"SystemFunction":1360,
+		"EncodeCapability":1360
 	}
 	OK_CODES = [100,515]
 	def __init__(self, ip, user="admin", password= "", port = 34567):
@@ -76,12 +90,13 @@ class DVRIPCam(object):
 		self.alive_time = data["AliveInterval"]
 		self.keep_alive()
 		return data["Ret"] in self.OK_CODES
-
+	def reboot(self):
+		self.set(self.QCODES["OPMachine"],"OPMachine",{ "Action" : "Reboot" })
+		self.close()
 	def pretty_print(self, data):
 		print json.dumps(data, indent = 4, sort_keys = True)
-
 	def keep_alive(self):
-		self.send(1006,{"Name":"KeepAlive","SessionID":"0x%08X"%self.session})
+		self.send(self.QCODES["KeepAlive"],{"Name":"KeepAlive","SessionID":"0x%08X"%self.session})
 		self.alive = threading.Timer(self.alive_time, self.keep_alive)
 		self.alive.start()
 	def set_info(self, command, data):
@@ -96,16 +111,22 @@ class DVRIPCam(object):
 			return data[str(command)]
 		else:
 			return data
+	def get_time(self):
+		return datetime.strptime(self.get(QCODES["OPTimeQuery"],"OPTimeQuery"),self.DATE_FORMAT)
+	def set_time(self, time=None)
+		if time==None:
+			time=datetime.now()
+		return self.set(QCODES["OPTimeSetting"],"OPTimeSetting",time.strftime(self.DATE_FORMAT))
 	def get_system_info(self):
 		data = self.get(1042, "General")
 		self.pretty_print(data)
 		
 	def get_encode_capabilities(self):
-		data = self.get(1360, "EncodeCapability")
+		data = self.get(self.QCODES["EncodeCapability"], "EncodeCapability")
 		self.pretty_print(data)
 	
 	def get_system_capabilities(self):
-		data = self.get(1360, "SystemFunction")
+		data = self.get(self.QCODES["SystemFunction"], "SystemFunction")
 		self.pretty_print(data)
 	
 	def get_camera_info(self, default = False):
