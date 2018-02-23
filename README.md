@@ -12,7 +12,7 @@ https://gist.github.com/ekwoodrich/a6d7b8db8f82adf107c3c366e61fd36f
 
 ## Usage
 
-```
+```python
 cam = DVRIPCam("192.168.1.10","admin","")
 cam.login()
 time = cam.get_time()
