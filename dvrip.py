@@ -113,7 +113,7 @@ class DVRIPCam(object):
 			return data
 	def get_time(self):
 		return datetime.strptime(self.get(QCODES["OPTimeQuery"],"OPTimeQuery"),self.DATE_FORMAT)
-	def set_time(self, time=None)
+	def set_time(self, time=None):
 		if time==None:
 			time=datetime.now()
 		return self.set(QCODES["OPTimeSetting"],"OPTimeSetting",time.strftime(self.DATE_FORMAT))
