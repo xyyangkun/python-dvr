@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 
 import os,sys,struct,json
+from locale import getdefaultlocale
 from socket import *
 from datetime import *
 import hashlib
@@ -32,9 +33,9 @@ help = """
 	device [MAC]		JSON String of [MAC]
 	config [MAC] [IP] [MASK] [GATE] [Pasword]   - Configure searched divice
 	"""%os.path.basename(sys.argv[0])
-lang = "ru"
+lang, charset = getdefaultlocale()
 locale = {
-	"ru":{
+	"ru_RU":{
 		"Type help or ? to display help(q or quit to exit)":u"Введите help или ? для справки, для выхода q или quit",
 		"Name":u"Наименование",
 		"Vendor":u"Марка",
@@ -274,7 +275,7 @@ def ProcessCMD(cmd):
 				try:
 					devices = searchers[s](devices)
 				except Exception as error:
-					print str(error).decode("windows-1251")
+					print str(error).decode(charset)
 			logs = _("Found %d devices")%len(devices)
 			if logLevel >= 10: print logs
 			if logLevel >= 20: tolog(logs)
