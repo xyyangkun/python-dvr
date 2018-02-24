@@ -1,7 +1,6 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-
 import os,sys,struct,json
 from socket import *
 from datetime import *
@@ -9,29 +8,18 @@ import hashlib
 
 try: 
 	from Tkinter import *
+	from tkFileDialog import asksaveasfilename
 	import ttk
 	GUI_TK=True
 except:
 	GUI_TK=False
-try:
-	import pygtk
-	import gobject
-	import gtk
-	#import gtk.glade
-	import pango
-	GUI_GTK=True
-except:
-	GUI_GTK=False
 
-def get_ip():
-	ip = gethostbyname_ex(gethostname())[2][0]
-	ipn = struct.unpack(">I",inet_aton(ip))
-	return (inet_ntoa(struct.pack(">I",ipn[0]+10)),"255.255.255.0",inet_ntoa(struct.pack(">I",ipn[0]&0xFFFFFF01)))
 devices = {}
 log = "search.log"
 help = """
-	Usage: %s [Command];[Command];...
-	
+	Usage: %s [-q] [-n] [Command];[Command];...
+	-q				No output
+	-n				No gui
 	Command			Description
 	
 	help			This help
@@ -44,11 +32,45 @@ help = """
 	device [MAC]		JSON String of [MAC]
 	config [MAC] [IP] [MASK] [GATE] [Pasword]   - Configure searched divice
 	"""%os.path.basename(sys.argv[0])
+lang = "ru"
+locale = {
+	"ru":{
+		"Type help or ? to display help(q or quit to exit)":u"Введите help или ? для справки, для выхода q или quit",
+		"Name":u"Наименование",
+		"Vendor":u"Марка",
+		"IP Address":u"IP Адрес",
+		"Mask":"Маска сети",
+		"Gateway":"Шлюз",
+		"TCP Port":u"TCP Порт",
+		"HTTP Port":u"HTTP Порт",
+		"Port":u"Порт",
+		"MAC Address":u"МАК Адрес",
+		"SN":u"Серийный №",
+		"As on PC":u"Как на ПК",
+		"Password":u"Пароль",
+		"Apply":u"Применить",
+		"Search":u"Поиск",
+		"Reset":u"Сброс",
+		"Export":u"Экспорт",
+		"All files":u"Все файлы",
+		"Text files":u"Текстовые файлы",
+		"Searching %s, found %d devices":u"Поиск %s, нашли %d устройств",
+		"Found %d devices":u"Найденно %d устройств",
+		},
+	}
+def _(msg):
+	if locale.has_key(lang):
+		if locale[lang].has_key(msg):
+			return locale[lang][msg]
+	return msg
 def tolog(s):
 		logfile = open(log, "a+")
-		logfile.write(datetime.now().strftime("[%Y-%m-%d %H:%M:%S] >")+s)
+		logfile.write(s)
 		logfile.close()
-
+def local_ip():
+	ip = gethostbyname_ex(gethostname())[2][0]
+	ipn = struct.unpack(">I",inet_aton(ip))
+	return (inet_ntoa(struct.pack(">I",ipn[0]+10)),"255.255.255.0",inet_ntoa(struct.pack(">I",(ipn[0]&0xFFFFFF00)+1)))
 def sofia_hash(msg):
 	s = ""
 	md5 = hashlib.md5(msg).digest()
@@ -114,6 +136,7 @@ def SearchDahua(devices):
 				answer[u'MAC'] = data[0][120:137]
 				answer[u'Model'] = data[0][137:]
 				answer[u'HttpPort'] = 80
+				answer[u'SN'] = ""
 				if not devices.has_key(answer[u'MAC']):
 					devices[answer[u'MAC']] = answer
 		except:
@@ -148,7 +171,8 @@ def SearchFros(devices):
 	client.close()
 	return devices
 
-def ConfigXM(devices, data):
+def ConfigXM(data):
+	global devices
 	config = {}
 	config[u'DvrMac'] = devices[data[1]][u'MAC']
 	config[u'EncryptType'] = 1
@@ -168,6 +192,9 @@ def ConfigXM(devices, data):
 	config[u'UseHSDownLoad'] = devices[data[1]][u'UseHSDownLoad']
 	config[u'Username'] = "admin"
 	config[u'Password'] = sofia_hash(data[5])
+	devices[data[1]][u'GateWay'] = config[u'GateWay']
+	devices[data[1]][u'HostIP'] = config[u'HostIP']
+	devices[data[1]][u'Submask'] = config[u'Submask']
 	config = json.dumps(config)+"\n"
 	server = socket(AF_INET, SOCK_DGRAM)
 	server.bind(('',34569))
@@ -194,7 +221,8 @@ def ConfigXM(devices, data):
 	server.close()
 	return answer
 	
-def ConfigFros(devices, data):
+def ConfigFros(data):
+	global devices
 	#('MO_I\x02\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00=\x00\x00\x00=\x00\x00\x00\x00\x00\x00\x010001FFBC1113\x00admin\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\xc0\xa8\x00d\xff\xff\xff\x00\xc0\xa8\x00\x01\xc0\xa8\x00\x01\x00P', ('192.168.0.201', 10000))
 	#server = socket(AF_INET, SOCK_DGRAM)
 	#server.bind(('',10000))
@@ -228,46 +256,55 @@ def ConfigFros(devices, data):
 
 def ProcessCMD(cmd):
 	global log,logLevel,devices,searchers,configure
-	if logLevel >= 20:
-		tolog(" ".join(cmd))
+	if logLevel == 20:
+		tolog(datetime.now().strftime("[%Y-%m-%d %H:%M:%S] >")+" ".join(cmd))
+	if (cmd[0].lower() == 'q' or cmd[0].lower() == 'quit'):
+		sys.exit(1)
 	if cmd[0].lower() in ["help","?","/?","-h","--help"]:
 		print help
 	if cmd[0].lower() == "search":
 		if len(cmd) > 1 and searchers.has_key(cmd[1]):
 			devices = searchers[cmd[1]](devices)
-			print "Searching %s, found %d devices"%(cmd[1],len(devices))
+			print _("Searching %s, found %d devices")%(cmd[1],len(devices))
 		else:
 			for s in searchers:
-				logs = "Searching %s"%s
-				if logLevel >= 10:
-					print logs
-				if logLevel >= 20:
-					tolog(logs)
+				logs = _("Search")+" %s\r"%s
+				if logLevel >= 10: print logs
+				if logLevel >= 20: tolog(logs)
 				try:
 					devices = searchers[s](devices)
 				except Exception as error:
-					print error
-			logs = "Found %d devices"%len(devices)
-			if logLevel >= 10:
-				print logs
-			if logLevel >= 20:
-				tolog(logs)
+					print str(error).decode("windows-1251")
+			logs = _("Found %d devices")%len(devices)
+			if logLevel >= 10: print logs
+			if logLevel >= 20: tolog(logs)
 		if len(devices) > 0:
 			if logLevel > 0:
 				cmd[0] = "table"
 				print ""
 	if cmd[0].lower() == "table":
-		logs = "Vendor\tMAC\t\t\tName\t\tIP\t\tPort"
-		print logs
-		if logLevel >= 20:
-			tolog(logs)
+		logs = _("Vendor")+"\t"+_("MAC Address")+"\t\t"+_("Name")+"\t"+_("IP Address")+"\t"+_("Port")+"\n"
 		for dev in devices:
-			logs = "%s\t%s\t%s\t%s\t%s"%(devices[dev]['Brand'],devices[dev]['MAC'],devices[dev]['HostName'],GetIP(devices[dev]['HostIP']),devices[dev]['TCPPort'])
-			if logLevel >= 20:
-				tolog(logs)
-			print logs
+			logs += "%s\t%s\t%s\t%s\t%s\n"%(devices[dev]['Brand'],devices[dev]['MAC'],devices[dev]['HostName'],GetIP(devices[dev]['HostIP']),devices[dev]['TCPPort'])
+		if logLevel >= 20: tolog(logs)
+		if logLevel >= 10: print logs
+	if cmd[0].lower() == "csv":
+		logs = _("Vendor")+";"+_("MAC Address")+";"+_("Name")+";"+_("IP Address")+";"+_("Port")+";"+_("SN")+"\n"
+		for dev in devices:
+			logs += '%s;%s;%s;%s;%s;%s\n'%(devices[dev]['Brand'],devices[dev]['MAC'],devices[dev]['HostName'],GetIP(devices[dev]['HostIP']),devices[dev]['TCPPort'],devices[dev]['SN'])
+		if logLevel >= 20: tolog(logs)
+		if logLevel >= 10: print logs
+	if cmd[0].lower() == "html":
+		logs = "<table border=1><th>"+_("Vendor")+"</th><th>"+_("MAC Address")+"</th><th>"+_("Name")+"</th><th>"+_("IP Address")+"</th><th>"+_("Port")+"</th><th>"+_("SN")+"</th>\r\n"
+		for dev in devices:
+			logs += "<tr><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>\r\n"%(devices[dev]['Brand'],devices[dev]['MAC'],devices[dev]['HostName'],GetIP(devices[dev]['HostIP']),devices[dev]['TCPPort'],devices[dev]['SN'])
+		logs += "</table>\r\n"
+		if logLevel >= 20: tolog(logs)
+		if logLevel >= 10: print logs
 	if cmd[0].lower() == "json":
-		print json.dumps(devices)
+		logs = json.dumps(devices)
+		if logLevel >= 20: tolog(logs)
+		if logLevel >= 10: print logs
 	if cmd[0].lower() == "device":
 		if len(cmd) > 1 and devices.has_key(cmd[1]):
 			print json.dumps(devices[cmd[1]])
@@ -275,7 +312,7 @@ def ProcessCMD(cmd):
 			print "device [MAC]"
 	if cmd[0].lower() == "config":
 		if len(cmd) > 1 and devices.has_key(cmd[1]):
-			print json.dumps(configure[devices[cmd[1]]['Brand']](devices,cmd))
+			print json.dumps(configure[devices[cmd[1]]['Brand']](cmd))
 		else:
 			print "config [MAC] [IP] [MASK] [GATE] [Pasword]"
 	if cmd[0].lower() == "loglevel":
@@ -295,12 +332,12 @@ def ProcessCMD(cmd):
 class GUITk:
 	def __init__(self,root):
 		self.root=root
-		self.root.wm_title("Device Manager")
+		self.root.wm_title(_("Device Manager"))
+		self.root.tk.call('wm', 'iconphoto', root._w, PhotoImage(data="R0lGODlhIAAgAPcAAAAAAAkFAgwKBwQBABQNBRAQDQQFERAOFA4QFBcWFSAaFCYgGAoUMhwiMSUlJCsrKyooJy8wLjUxLjkzKTY1Mzw7OzY3OEpFPwsaSRsuTRUsWD4+QCo8XQAOch0nYB05biItaj9ARjdHYiRMfEREQ0hIR0xMTEdKSVNOQ0xQT0NEUVFNUkhRXlVVVFdYWFxdXFtZVV9wXGZjXUtbb19fYFRda19gYFZhbF5wfWRkZGVna2xsa2hmaHFtamV0Ynp2aHNzc3x8fHh3coF9dYJ+eH2Fe3K1YoGBfgIgigwrmypajDtXhw9FpxFFpSdVpzlqvFNzj0FvnV9zkENnpUh8sgdcxh1Q2jt3zThi0SJy0Dl81Rhu/g50/xp9/x90/zB35TJv8DJ+/EZqzj2DvlGDrlqEuHqLpHeQp26SuhqN+yiC6imH/zSM/yqa/zeV/zik/1aIwlmP0mmayWSY122h3VWb6kyL/1yP8UGU/UiW/VWd/miW+Eqp/12k/1Co/1yq/2Gs/2qr/WKh/nGv/3er9mK3/3K0/3e4+4ODg4uLi4mHiY+Qj5WTjo+PkJSUlJycnKGem6ShnY2ZrKOjo6urrKqqpLi0prS0tLu8vMO+tb+/wJrE+bzf/sTExMfIx8zMzMjIxtrWyM/Q0NXU1NfY193d3djY1uDf4Mnj+931/OTk5Ozs7O/v8PLy8gAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACH5BAEAAAAALAAAAAAgACAAAAj+AAEIHEiwoMGDCBMqXMiwocOHECNKnEixosWLGDNq3Mgx4iVMnTyJInVKlclSpD550nRpUqKGmD59EjWqlMlVOFWdIgWq0iNNoBIhSujokidPn0aNKrmqVStWqjxRumTqyI5KOxI5OpiIkiakNG2yelqK5alKLSAJgbBBB6RIjArmCKLIkV1HjyZNpTTJFKgSQoI4cGBiBxBIR6QM6TGQxooWL3LwMBwkSJEcLUq8YATDAZAdMkKh+GGpAo0cL1wInJuokSNIeqdeCgLBAoVMR2CEMkHDzAcnTCzsCAKERwsXK3wYKYLIdd6pjh4guCGJw5IpT7R8CeNlCwsikx7+JTJ+PAZlRHXxOgqBAQMTLXj0AAKkJw+eJw6CXGqJyAWNyT8QgZ5rsD2igwYEOOEGH38EEoghgcQhQgJAxISJI/8ZNoQUijiX1yM7NIBAFm3wUcghh9yBhQcCFEBDJ6V8MskKhgERxBGMMILXI7AhsoAAGSgRBRlliLHHHlZgMAAJmLByCiUnfGajFEcgotVzjkhggAYjjBHFFISgkoodSDAwAyStqDIJAELs4CYQQxChVSRTQcJCFWmUyAcghmzCCRgdXCEHEU69VJiNdDmnV0s4rNHFGmzgkUcfhgiShAd0nNHDVAc9YIEFFWxAQgkVpKAGF1yw4UYdc6AhhQohJFiwQAIRPQCHFlRAccMJFCRAgAAVJXDBBAsQEEBHDwUEADs="))
 		self.f = ttk.Frame(self.root)
 		self.f.rowconfigure(0, weight=1)
 		self.f.columnconfigure(0, weight=1)
 		self.f.pack(fill=BOTH, expand=YES)
-		#self.f.bind('<Configure>', self.resize)
 
 		self.fr = ttk.Frame(self.f)
 		self.fr.pack(fill=BOTH, expand=YES)
@@ -314,31 +351,25 @@ class GUITk:
 		self.fr_config.pack(fill=Y, expand=YES)
 		self.fr_config.grid(row=0, column=5, sticky="nsew")
 
-		# Определяем таблицу Treeview
 		self.table = ttk.Treeview(self.fr, show='headings', selectmode='browse', height=10)
 		self.table.pack(fill=BOTH, expand=YES)
 		self.table.grid(column=0, row=0, sticky="nsew")
-		# Задаем заголовки колонкам
-		self.table["columns"]=("ID","vendor","addr","port","name","mac","cloud")
-		# Выводим необходимые столбцы
-		self.table["displaycolumns"]=("vendor","addr","port","name","mac","cloud")
+		self.table["columns"]=("vendor","addr","port","name","mac","sn")
+		self.table["displaycolumns"]=("vendor","addr","port","name","mac","sn")
 
-		self.table.heading("ID", text=u"ID", anchor='w')
-		self.table.heading("vendor", text=u"Производитель", anchor='w')
-		self.table.heading("addr", text=u"IP Адресс", anchor='w')
-		self.table.heading("port", text=u"Порт", anchor='w')
-		self.table.heading("name", text=u"Наименование", anchor='w')
-		self.table.heading("mac", text=u"MAC Адрес", anchor='w')
-		self.table.heading("cloud", text=u"ИД Облака", anchor='w')
+		self.table.heading("vendor", text=_("Vendor"), anchor='w')
+		self.table.heading("addr", text=_("IP Address"), anchor='w')
+		self.table.heading("port", text=_("Port"), anchor='w')
+		self.table.heading("name", text=_("Name"), anchor='w')
+		self.table.heading("mac", text=_("MAC Address"), anchor='w')
+		self.table.heading("sn", text=_("SN"), anchor='w')
 
-		self.table.column("ID", stretch=0, width=30)
-		self.table.column("vendor", stretch=0, width=80)
+		self.table.column("vendor", stretch=0, width=50)
 		self.table.column("addr", stretch=0, width=90)
 		self.table.column("port", stretch=0, width=40)
 		self.table.column("name", stretch=0, width=90)
-		self.table.column("mac", stretch=0, width=95)
-		self.table.column("cloud", stretch=0, width=90)
-
+		self.table.column("mac", stretch=0, width=100)
+		self.table.column("sn", stretch=0, width=110)
 
 		self.scrollY = ttk.Scrollbar(self.fr, orient=VERTICAL)
 		self.scrollY.config(command=self.table.yview)
@@ -348,47 +379,45 @@ class GUITk:
 		self.scrollX.grid(row=1, column=0, sticky="ew")
 		self.table.config(yscrollcommand=self.scrollY.set,xscrollcommand=self.scrollX.set)
 
-		self.table.bind('<ButtonRelease>', self.insrec)
-		self.table.bind('<Down>', self.insdown)
-		self.table.bind('<Up>', self.insup)
-		
-		self.l1 = ttk.Label(self.fr_config, text="IP Адрес")
+		self.table.bind('<ButtonRelease>', self.select)
+
+		self.l1 = ttk.Label(self.fr_config, text=_("IP Address"))
 		self.l1.grid(row=0, column=0,pady=3,padx=5,sticky=W+N)
 		self.addr = ttk.Entry(self.fr_config, width=15, font="6")
 		self.addr.grid(row=0, column=1,pady=3,padx=5,sticky=W+N)
-		self.l2 = ttk.Label(self.fr_config, text="Маска")
+		self.l2 = ttk.Label(self.fr_config, text=_("Mask"))
 		self.l2.grid(row=1, column=0,pady=3,padx=5,sticky=W+N)
 		self.mask = ttk.Entry(self.fr_config, width=15, font="6")
 		self.mask.grid(row=1, column=1,pady=3,padx=5,sticky=W+N)
-		self.l3 = ttk.Label(self.fr_config, text="Шлюз")
+		self.l3 = ttk.Label(self.fr_config, text=_("Gateway"))
 		self.l3.grid(row=2, column=0,pady=3,padx=5,sticky=W+N)
 		self.gate = ttk.Entry(self.fr_config, width=15, font="6")
 		self.gate.grid(row=2, column=1,pady=3,padx=5,sticky=W+N)
-		self.aspc = ttk.Button(self.fr_config, text="Как на ПК",command=self.addr_pc)
+		self.aspc = ttk.Button(self.fr_config, text=_("As on PC"),command=self.addr_pc)
 		self.aspc.grid(row=3, column=1,pady=3,padx=5,sticky="ew")
-		self.l4 = ttk.Label(self.fr_config, text="HTTP порт")
+		self.l4 = ttk.Label(self.fr_config, text=_("HTTP Port"))
 		self.l4.grid(row=4, column=0,pady=3,padx=5,sticky=W+N)
 		self.http = ttk.Entry(self.fr_config, width=5, font="6")
 		self.http.grid(row=4, column=1,pady=3,padx=5,sticky=W+N)
-		self.l5 = ttk.Label(self.fr_config, text="TCP порт")
+		self.l5 = ttk.Label(self.fr_config, text=_("TCP Port"))
 		self.l5.grid(row=5, column=0,pady=3,padx=5,sticky=W+N)
 		self.tcp = ttk.Entry(self.fr_config, width=5, font="6")
 		self.tcp.grid(row=5, column=1,pady=3,padx=5,sticky=W+N)
-		self.l6 = ttk.Label(self.fr_config, text="Пароль\nadmin")
+		self.l6 = ttk.Label(self.fr_config, text=_("Password"))
 		self.l6.grid(row=6, column=0,pady=3,padx=5,sticky=W+N)
 		self.passw = ttk.Entry(self.fr_config, width=15, font="6")
 		self.passw.grid(row=6, column=1,pady=3,padx=5,sticky=W+N)
-		self.aply = ttk.Button(self.fr_config, text="Применить",command=self.addr_pc)
+		self.aply = ttk.Button(self.fr_config, text=_("Apply"),command=self.setconfig)
 		self.aply.grid(row=7, column=1,pady=3,padx=5,sticky="ew")
-		self.search = ttk.Button(self.fr_tools, text="Поиск",command=self.search)
+		self.search = ttk.Button(self.fr_tools, text=_("Search"),command=self.search)
 		self.search.grid(row=0, column=0,pady=5,padx=5,sticky=W+N)
-		self.reset = ttk.Button(self.fr_tools, text="Сброс",command=self.clear)
+		self.reset = ttk.Button(self.fr_tools, text=_("Reset"),command=self.clear)
 		self.reset.grid(row=0, column=1,pady=5,padx=5,sticky=W+N)
-		self.exp = ttk.Button(self.fr_tools, text="Экспорт",command=self.addr_pc)
+		self.exp = ttk.Button(self.fr_tools, text=_("Export"),command=self.export)
 		self.exp.grid(row=0, column=2,pady=5,padx=5,sticky=W+N)
 
 	def addr_pc(self):
-		_addr,_mask,_gate = get_ip()
+		_addr,_mask,_gate = local_ip()
 		self.addr.delete(0, END)
 		self.addr.insert(END, _addr)
 		self.mask.delete(0, END)
@@ -398,39 +427,17 @@ class GUITk:
 	def search(self):
 		self.clear()
 		ProcessCMD(["search"])
-		i=1
 		for dev in devices:
-			self.table.insert('', 'end', values=(i, devices[dev]['Brand'], GetIP(devices[dev]['HostIP']), devices[dev]['TCPPort'], devices[dev]['HostName'], devices[dev]['MAC'], ""))
-			i +=1
+			self.table.insert('', 'end', values=(devices[dev]['Brand'], GetIP(devices[dev]['HostIP']), devices[dev]['TCPPort'], devices[dev]['HostName'], devices[dev]['MAC'],  devices[dev]['SN']))
 	def clear(self):
 		global devices
 		for i in self.table.get_children():
 			self.table.delete(i)
 		devices = {}
-	def insdown(self, event):
-		index = self.table.index(self.table.selection()[0])
-		selitem = self.table.selection()[0]
-		if self.table.exists(self.table.next(selitem)):
-			selitem = self.table.next(selitem)
-			index = index+1
-			print "Next", self.table.exists(self.table.next(selitem))
-		else:
-			index = index
-			selitem = self.table.focus(selitem)
-		print index
-	#    print self.table.focus()
-	def insup(self, event):
-		index = self.table.index(self.table.selection()[0])
-		selitem = self.table.selection()[0]
-		if int(index)<>0:
-			seltext = index-1
-			selitem = self.table.prev(selitem)
-		if int(index)==0:
-			seltext = index
-		print seltext
-	#    print self.table.selection(seltext)[0]
-	def insrec(self, event):
-		_mac = self.table.item(self.table.selection()[0], option='values')[5]
+	def select(self, event):
+		if len(self.table.selection()) == 0:
+			return
+		_mac = self.table.item(self.table.selection()[0], option='values')[4]
 		self.addr.delete(0, END)
 		self.addr.insert(END, GetIP(devices[_mac]['HostIP']))
 		self.mask.delete(0, END)
@@ -441,11 +448,29 @@ class GUITk:
 		self.http.insert(END, devices[_mac]['HttpPort'])
 		self.tcp.delete(0, END)
 		self.tcp.insert(END, devices[_mac]['TCPPort'])
-		# Вывод ID строки
-		print self.table.index(self.table.selection()[0])
-	def resize (self, event): 
-		print '(% d,% d)'% (event.width, event.height) 
-		#self.f.configure (width = event.width-4, height = event.height-4) 
+	def setconfig(self):
+		_mac = self.table.item(self.table.selection()[0], option='values')[4]
+		devices[_mac][u'TCPPort'] = int(self.tcp.get())
+		devices[_mac][u'HttpPort'] = int(self.http.get())
+		ProcessCMD(["config",_mac,self.addr.get(),self.mask.get(),self.gate.get(),self.passw.get()])
+	def export(self):
+		filename = asksaveasfilename(filetypes = ((_("JSON files"), "*.json")
+								,(_("HTML files"), "*.html;*.htm")
+								,(_("Text files"), "*.csv;*.txt")
+								,(_("All files"), "*.*") ))
+		if filename == "":
+			return
+		ProcessCMD(["log",filename])
+		ProcessCMD(["loglevel", str(100)])
+		if ".json" in filename:
+			ProcessCMD(["json"])
+		elif ".csv" in filename:
+			ProcessCMD(["csv"])
+		elif ".htm" in filename:
+			ProcessCMD(["html"])
+		else:
+			ProcessCMD(["table"])
+		ProcessCMD(["loglevel", str(10)])
 
 searchers = {"xm":SearchXM,"dahua":SearchDahua,"fros":SearchFros}
 configure = {"xm":ConfigXM,"fros":ConfigFros}#,"Dahua":ConfigDahua
@@ -454,26 +479,20 @@ if __name__ == "__main__":
 	if len(sys.argv) > 1:
 		cmds = " ".join(sys.argv[1:])
 		if cmds.find("-q ") != -1:
-			cmds = cmds.replace("-q ","")
+			cmds = cmds.replace("-q ","").replace("-n ","").strip()
 			logLevel = 0
 		for cmd in cmds.split(";"):
 			ProcessCMD(cmd.split(" "))
-		sys.exit(1)
-	
-	if GUI_GTK:
-		print "no gtk"
-	if GUI_TK:
+	if GUI_TK and "-n" not in sys.argv:
 		root = Tk()
 		app = GUITk(root)
 		#Style = ttk.Style()
 		#ttk.Style.theme_use(Style, "clam")
 		root.mainloop()
 		sys.exit(1)
-	print "Type help or ? to display help(q or Q to exit)"
+	print _("Type help or ? to display help(q or quit to exit)")
 	while True:
 		data = raw_input("> ").split(";")
 		for cmd in data:
-			if (cmd.lower() == 'q' or cmd.lower() == 'quit'):
-				sys.exit(1)
 			ProcessCMD(cmd.split(" "))
 	sys.exit(1)
