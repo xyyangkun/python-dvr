@@ -1,6 +1,10 @@
 # python-dvr
 Python library for configuring a wide range of IP cameras which use the NETsurveillance ActiveX plugin
 
+## DeviceManager.py
+DeviceManager.py is standalone tkinter and console interface program souch as original DeviceManager.exe
+it possible work on both systems - if no TK - it starts with console interface
+
 ## DVR-IP, NetSurveillance  or "Sofia" Protocol
 The NETSurveillance ActiveX plugin uses a TCP based protocol refered to simply as the "Digital Video Recorder Interface Protocol" by the "Hangzhou male Mai Information Co".
 
