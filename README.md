@@ -1,5 +1,6 @@
 # python-dvr
 Python library for configuring a wide range of IP cameras which use the NETsurveillance ActiveX plugin
+XMeye SDK
 
 ## DeviceManager.py
 DeviceManager.py is standalone tkinter and console interface program souch as original DeviceManager.exe
