@@ -9,7 +9,7 @@ import hashlib
 
 try: 
 	from Tkinter import *
-	from tkFileDialog import asksaveasfilename
+	from tkFileDialog import asksaveasfilename,askopenfilename
 	import ttk
 	GUI_TK=True
 except:
@@ -53,10 +53,12 @@ locale = {
 		"Search":u"Поиск",
 		"Reset":u"Сброс",
 		"Export":u"Экспорт",
+		"Flash":u"Прошивка",
 		"All files":u"Все файлы",
 		"Text files":u"Текстовые файлы",
 		"Searching %s, found %d devices":u"Поиск %s, нашли %d устройств",
 		"Found %d devices":u"Найденно %d устройств",
+		"All":"По всем",
 		},
 	}
 def _(msg):
@@ -256,7 +258,7 @@ def ConfigFros(data):
 
 
 def ProcessCMD(cmd):
-	global log,logLevel,devices,searchers,configure
+	global log,logLevel,devices,searchers,configure,flashers
 	if logLevel == 20:
 		tolog(datetime.now().strftime("[%Y-%m-%d %H:%M:%S] >")+" ".join(cmd))
 	if (cmd[0].lower() == 'q' or cmd[0].lower() == 'quit'):
@@ -264,8 +266,11 @@ def ProcessCMD(cmd):
 	if cmd[0].lower() in ["help","?","/?","-h","--help"]:
 		print help
 	if cmd[0].lower() == "search":
-		if len(cmd) > 1 and searchers.has_key(cmd[1]):
-			devices = searchers[cmd[1]](devices)
+		if len(cmd) > 1 and searchers.has_key(cmd[1].lower()):
+			try:
+				devices = searchers[cmd[1].lower()](devices)
+			except Exception as error:
+				print str(error).decode(charset)
 			print _("Searching %s, found %d devices")%(cmd[1],len(devices))
 		else:
 			for s in searchers:
@@ -312,10 +317,15 @@ def ProcessCMD(cmd):
 		else:
 			print "device [MAC]"
 	if cmd[0].lower() == "config":
-		if len(cmd) > 1 and devices.has_key(cmd[1]):
+		if len(cmd) > 5 and devices.has_key(cmd[1]) and configure.has_key(devices[cmd[1]]['Brand']):
 			print json.dumps(configure[devices[cmd[1]]['Brand']](cmd))
 		else:
 			print "config [MAC] [IP] [MASK] [GATE] [Pasword]"
+	if cmd[0].lower() == "flash":
+		if len(cmd) > 2 and devices.has_key(cmd[1]) and flashers.has_key(devices[cmd[1]]['Brand']):
+			print json.dumps(flashers[devices[cmd[1]]['Brand']](cmd))
+		else:
+			print "flash [MAC] [file]"
 	if cmd[0].lower() == "loglevel":
 		if len(cmd) > 1:
 			logLevel = int(cmd[1])
@@ -347,10 +357,10 @@ class GUITk:
 		self.fr.grid(row=0, column=0, columnspan=3, sticky="nsew")
 		self.fr_tools = ttk.Frame(self.f)
 		self.fr_tools.pack(fill=X, expand=YES)
-		self.fr_tools.grid(row=1, column=0, columnspan=4, sticky="ew")
+		self.fr_tools.grid(row=1, column=0, columnspan=3, sticky="ew")
 		self.fr_config = ttk.Frame(self.f)
 		self.fr_config.pack(fill=Y, expand=YES)
-		self.fr_config.grid(row=0, column=5, sticky="nsew")
+		self.fr_config.grid(row=0, column=5, rowspan=2, sticky="nsew")
 
 		self.table = ttk.Treeview(self.fr, show='headings', selectmode='browse', height=10)
 		self.table.pack(fill=BOTH, expand=YES)
@@ -410,12 +420,20 @@ class GUITk:
 		self.passw.grid(row=6, column=1,pady=3,padx=5,sticky=W+N)
 		self.aply = ttk.Button(self.fr_config, text=_("Apply"),command=self.setconfig)
 		self.aply.grid(row=7, column=1,pady=3,padx=5,sticky="ew")
+		self.l7 = ttk.Label(self.fr_tools, text=_("Vendor"))
+		self.l7.grid(row=0, column=0,pady=3,padx=5,sticky="wns")
+		self.ven = ttk.Combobox(self.fr_tools, width=10)
+		self.ven.grid(row=0, column=1,padx=5,sticky="w")
+		self.ven['values'] = [_("All"), "XM", "Dahua", "Fros"]
+		self.ven.current(0)
 		self.search = ttk.Button(self.fr_tools, text=_("Search"),command=self.search)
-		self.search.grid(row=0, column=0,pady=5,padx=5,sticky=W+N)
+		self.search.grid(row=0, column=2,pady=5,padx=5,sticky=W+N)
 		self.reset = ttk.Button(self.fr_tools, text=_("Reset"),command=self.clear)
-		self.reset.grid(row=0, column=1,pady=5,padx=5,sticky=W+N)
+		self.reset.grid(row=0, column=3,pady=5,padx=5,sticky=W+N)
 		self.exp = ttk.Button(self.fr_tools, text=_("Export"),command=self.export)
-		self.exp.grid(row=0, column=2,pady=5,padx=5,sticky=W+N)
+		self.exp.grid(row=0, column=4,pady=5,padx=5,sticky=W+N)
+		self.fl = ttk.Button(self.fr_tools, text=_("Flash"),command=self.flash)
+		self.fl.grid(row=0, column=5,pady=5,padx=5,sticky=W+N)
 
 	def addr_pc(self):
 		_addr,_mask,_gate = local_ip()
@@ -427,7 +445,10 @@ class GUITk:
 		self.gate.insert(END, _gate)
 	def search(self):
 		self.clear()
-		ProcessCMD(["search"])
+		if self.ven['values'].index(self.ven.get()) == 0:
+			ProcessCMD(["search"])
+		else:
+			ProcessCMD(["search",self.ven.get()])
 		for dev in devices:
 			self.table.insert('', 'end', values=(devices[dev]['Brand'], GetIP(devices[dev]['HostIP']), devices[dev]['TCPPort'], devices[dev]['HostName'], devices[dev]['MAC'],  devices[dev]['SN']))
 	def clear(self):
@@ -472,9 +493,20 @@ class GUITk:
 		else:
 			ProcessCMD(["table"])
 		ProcessCMD(["loglevel", str(10)])
+	def flash(self):
+		filename = askopenfilename(filetypes = ((_("Flash"), "*.bin")
+									,(_("All files"), "*.*") ))
+		if filename == "":
+			return
+		if len(self.table.selection()) == 0:
+			_mac="all"
+		else:
+			_mac = self.table.item(self.table.selection()[0], option='values')[4]
+		ProcessCMD(["flash",_mac,filename])
 
 searchers = {"xm":SearchXM,"dahua":SearchDahua,"fros":SearchFros}
-configure = {"xm":ConfigXM,"fros":ConfigFros}#,"Dahua":ConfigDahua
+configure = {"xm":ConfigXM,"fros":ConfigFros}#,"dahua":ConfigDahua
+flashers  = {}#"xm":FlashXM,"dahua":FlashDahua,"fros":FlashFros
 logLevel = 10
 if __name__ == "__main__":
 	if len(sys.argv) > 1:
