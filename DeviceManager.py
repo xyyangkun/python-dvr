@@ -574,7 +574,7 @@ class GUITk:
 		else:
 			_mac = self.table.item(self.table.selection()[0], option='values')[4]
 		result = ProcessCMD(["flash",_mac,filename])
-		if asattr(result, 'has_key') and result.has_key('Ret') and CODES.has_key('Ret'): showerror(_("Error"),CODES[result['Ret']])
+		if hasattr(result, 'has_key') and result.has_key('Ret') and CODES.has_key('Ret'): showerror(_("Error"),CODES[result['Ret']])
 
 searchers = {"xm":SearchXM,"dahua":SearchDahua,"fros":SearchFros}
 configure = {"xm":ConfigXM,"fros":ConfigFros}#,"dahua":ConfigDahua
@@ -600,7 +600,7 @@ if __name__ == "__main__":
 		data = raw_input("> ").split(";")
 		for cmd in data:
 			result = ProcessCMD(cmd.split(" "))
-			if result.has_key('Ret'):
+			if hasattr(result, 'has_key') and result.has_key('Ret'):
 				print CODES[result['Ret']]
 			else:
 				print result
