@@ -10,6 +10,7 @@ import hashlib
 try: 
 	from Tkinter import *
 	from tkFileDialog import asksaveasfilename,askopenfilename
+	from tkMessageBox import showinfo, showerror
 	import ttk
 	GUI_TK=True
 except:
@@ -59,6 +60,7 @@ locale = {
 		"Searching %s, found %d devices":u"Поиск %s, нашли %d устройств",
 		"Found %d devices":u"Найденно %d устройств",
 		"All":"По всем",
+		"Error":"Ошибка",
 		},
 	}
 def _(msg):
@@ -66,6 +68,64 @@ def _(msg):
 		if locale[lang].has_key(msg):
 			return locale[lang][msg]
 	return msg
+CODES = {
+	100:_("Success"),
+	101:_("Unknown error"),
+	102:_("Version not supported"),
+	103:_("Illegal request"),
+	104:_("User has already logged in"),
+	105:_("User is not logged in"),
+	106:_("Username or Password is incorrect"),
+	107:_("Insufficient permission"),
+	108:_("Timeout"),
+	109:_("Find failed, file not found"),
+	110:_("Find success, returned all files"),
+	111:_("Find success, returned part of files"),
+	112:_("User already exists"),
+	113:_("User does not exist"),
+	114:_("User group already exists"),
+	115:_("User group does not exist"),
+	116:_("Reserved"),
+	117:_("Message is malformed"),
+	118:_("No PTZ protocol is set"),
+	119:_("No query to file"),
+	120:_("Configured to be enabled"),
+	121:_("Digital channel is not enabled"),
+	150:_("Success, device restart required"),
+	202:_("User is not logged in"),
+	203:_("Incorrect password"),
+	204:_("User is illegal"),
+	205:_("User is locked"),
+	206:_("User is in the blacklist"),
+	207:_("User already logged in"),
+	208:_("Invalid input"),
+	209:_("User already exists"),
+	210:_("Object not found"),
+	211:_("Object does not exist"),
+	212:_("Account in use"),
+	213:_("Permission table error"),
+	214:_("Illegal password"),
+	215:_("Password does not match"),
+	216:_("Keep account number"),
+	502:_("Illegal command"),
+	503:_("Talk channel has ben opened"),
+	504:_("Talk channel is not open"),
+	511:_("Update started"),
+	512:_("Update did not start"),
+	513:_("Update data error"),
+	514:_("Update failed"),
+	515:_("Update succeeded"),
+	521:_("Failed to restore default config"),
+	522:_("Device restart required"),
+	523:_("Default config is illegal"),
+	602:_("Application restart required"),
+	603:_("System restart required"),
+	604:_("Write file error"),
+	605:_("Features are not supported"),
+	606:_("Verification failed"),
+	607:_("Configuration does not exist"),
+	608:_("Configuration parsing error"),
+}
 def tolog(s):
 		logfile = open(log, "a+")
 		logfile.write(s)
@@ -90,10 +150,10 @@ def sofia_hash(msg):
 	return s
 
 def GetIP(s):
-	return inet_ntoa(struct.pack('<I',int(s,16)))
+	return inet_ntoa(struct.pack('I',int(s,16)))
 
 def SetIP(ip):
-	return "0x%08X"%struct.unpack('<I',inet_aton(ip))
+	return "0x%08X"%struct.unpack('I',inet_aton(ip))
 
 def SearchXM(devices):
 	server = socket(AF_INET, SOCK_DGRAM)
@@ -102,13 +162,13 @@ def SearchXM(devices):
 	client = socket(AF_INET, SOCK_DGRAM)
 	client.setsockopt(SOL_SOCKET, SO_REUSEADDR, 1)
 	client.setsockopt(SOL_SOCKET, SO_BROADCAST, 1)
-	client.sendto('\xff\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\xfa\x05\x00\x00\x00\x00',("255.255.255.255", 34569))
+	client.sendto(struct.pack('BBHIIHHI',255,0,0,0,0,0,1530,0),("255.255.255.255", 34569))
 	while True:
 		try:
 			data = server.recvfrom(1024)
-			typ,leng = struct.unpack('<BxI',data[0][14:20])
-			if (typ == 0xfb or data[0][1] == '\x01') and leng > 0:
-				answer = json.loads(data[0][20:19+leng],encoding="cp866")
+			head,ver,typ,session,packet,info,msg,leng = struct.unpack('BBHIIHHI',data[0][:20])
+			if (msg == 1531) and leng > 0:
+				answer = json.loads(data[0][20:19+leng],encoding="utf8")
 				if not devices.has_key(answer['NetWork.NetCommon']['MAC']):
 					devices[answer['NetWork.NetCommon']['MAC']] = answer['NetWork.NetCommon']
 					devices[answer['NetWork.NetCommon']['MAC']][u'Brand'] = u"xm"
@@ -175,7 +235,6 @@ def SearchFros(devices):
 	return devices
 
 def ConfigXM(data):
-	global devices
 	config = {}
 	config[u'DvrMac'] = devices[data[1]][u'MAC']
 	config[u'EncryptType'] = 1
@@ -198,25 +257,23 @@ def ConfigXM(data):
 	devices[data[1]][u'GateWay'] = config[u'GateWay']
 	devices[data[1]][u'HostIP'] = config[u'HostIP']
 	devices[data[1]][u'Submask'] = config[u'Submask']
-	config = json.dumps(config)+"\n"
+	config = json.dumps(config,encoding="utf8")+"\n"
 	server = socket(AF_INET, SOCK_DGRAM)
 	server.bind(('',34569))
 	server.settimeout(1)
 	client = socket(AF_INET, SOCK_DGRAM)
 	client.setsockopt(SOL_SOCKET, SO_REUSEADDR, 1)
 	client.setsockopt(SOL_SOCKET, SO_BROADCAST, 1)
-	#('\xff\x00\xfe\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\xfc\x05\x8f\x01\x00\x00{ "DvrMac" : "40:16:7E:B1:29:66", "EncryptType" : 1, "GateWay" : "0x0100A8C0", "HostIP" : "0x6E00A8C0", "HostName" : "LocalHost", "HttpPort" : 80, "MAC" : "00:12:16:ec:72:d6", "MaxBps" : 0, "MonMode" : 0, "Password" : "tlJwpbo6", "SSLPort" : 8443, "Submask" : "0x00FFFFFF", "TCPMaxConn" : 10, "TCPPort" : 34567, "TransferPlan" : 1, "UDPPort" : 34568, "UseHSDownLoad" : false, "Username" : "admin" }\n', ('192.168.0.20', 34569))
-	client.sendto('\xff\x00\xfe\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\xfc\x05'+struct.pack('<i',len(config))+config,("255.255.255.255", 34569))
-	print config
+	#(255, version=0, type=254, 0, 0, info=0, msg=1532, len)
+	client.sendto(struct.pack('BBHIIHHI',255,0,254,0,0,0,1532,len(config)+2)+config+'\x0a\x00',("255.255.255.255", 34569))
 	answer = {}
 	while True:
 		try:
 			#('\xff\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\xfd\x05,\x00\x00\x00{"Ret" : 100, "SessionID" : "0x00000000" }\x00\x00', ('192.168.0.110', 55705))
 			data = server.recvfrom(1024)
-			print data
 			typ,leng = struct.unpack('<BxI',data[0][14:20])
 			if (typ == 0xfd or data[0][1] == '\x01') and leng > 0:
-				answer = json.loads(data[0][20:19+leng],encoding="cp866")
+				answer = json.loads(data[0][20:19+leng],encoding="utf8")
 		except:
 			break
 			e = 1
@@ -225,7 +282,6 @@ def ConfigXM(data):
 	return answer
 	
 def ConfigFros(data):
-	global devices
 	#('MO_I\x02\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00=\x00\x00\x00=\x00\x00\x00\x00\x00\x00\x010001FFBC1113\x00admin\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\xc0\xa8\x00d\xff\xff\xff\x00\xc0\xa8\x00\x01\xc0\xa8\x00\x01\x00P', ('192.168.0.201', 10000))
 	#server = socket(AF_INET, SOCK_DGRAM)
 	#server.bind(('',10000))
@@ -264,7 +320,7 @@ def ProcessCMD(cmd):
 	if (cmd[0].lower() == 'q' or cmd[0].lower() == 'quit'):
 		sys.exit(1)
 	if cmd[0].lower() in ["help","?","/?","-h","--help"]:
-		print help
+		return help
 	if cmd[0].lower() == "search":
 		if len(cmd) > 1 and searchers.has_key(cmd[1].lower()):
 			try:
@@ -293,52 +349,53 @@ def ProcessCMD(cmd):
 		for dev in devices:
 			logs += "%s\t%s\t%s\t%s\t%s\n"%(devices[dev]['Brand'],devices[dev]['MAC'],devices[dev]['HostName'],GetIP(devices[dev]['HostIP']),devices[dev]['TCPPort'])
 		if logLevel >= 20: tolog(logs)
-		if logLevel >= 10: print logs
+		if logLevel >= 10: return logs
 	if cmd[0].lower() == "csv":
 		logs = _("Vendor")+";"+_("MAC Address")+";"+_("Name")+";"+_("IP Address")+";"+_("Port")+";"+_("SN")+"\n"
 		for dev in devices:
 			logs += '%s;%s;%s;%s;%s;%s\n'%(devices[dev]['Brand'],devices[dev]['MAC'],devices[dev]['HostName'],GetIP(devices[dev]['HostIP']),devices[dev]['TCPPort'],devices[dev]['SN'])
 		if logLevel >= 20: tolog(logs)
-		if logLevel >= 10: print logs
+		if logLevel >= 10: return logs
 	if cmd[0].lower() == "html":
 		logs = "<table border=1><th>"+_("Vendor")+"</th><th>"+_("MAC Address")+"</th><th>"+_("Name")+"</th><th>"+_("IP Address")+"</th><th>"+_("Port")+"</th><th>"+_("SN")+"</th>\r\n"
 		for dev in devices:
 			logs += "<tr><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>\r\n"%(devices[dev]['Brand'],devices[dev]['MAC'],devices[dev]['HostName'],GetIP(devices[dev]['HostIP']),devices[dev]['TCPPort'],devices[dev]['SN'])
 		logs += "</table>\r\n"
 		if logLevel >= 20: tolog(logs)
-		if logLevel >= 10: print logs
+		if logLevel >= 10: return logs
 	if cmd[0].lower() == "json":
 		logs = json.dumps(devices)
 		if logLevel >= 20: tolog(logs)
-		if logLevel >= 10: print logs
+		if logLevel >= 10: return logs
 	if cmd[0].lower() == "device":
 		if len(cmd) > 1 and devices.has_key(cmd[1]):
-			print json.dumps(devices[cmd[1]])
+			return json.dumps(devices[cmd[1]])
 		else:
-			print "device [MAC]"
+			return "device [MAC]"
 	if cmd[0].lower() == "config":
 		if len(cmd) > 5 and devices.has_key(cmd[1]) and configure.has_key(devices[cmd[1]]['Brand']):
-			print json.dumps(configure[devices[cmd[1]]['Brand']](cmd))
+			return configure[devices[cmd[1]]['Brand']](cmd)
 		else:
-			print "config [MAC] [IP] [MASK] [GATE] [Pasword]"
+			return "config [MAC] [IP] [MASK] [GATE] [Pasword]"
 	if cmd[0].lower() == "flash":
 		if len(cmd) > 2 and devices.has_key(cmd[1]) and flashers.has_key(devices[cmd[1]]['Brand']):
-			print json.dumps(flashers[devices[cmd[1]]['Brand']](cmd))
+			return flashers[devices[cmd[1]]['Brand']](cmd)
 		else:
-			print "flash [MAC] [file]"
+			return "flash [MAC] [file]"
 	if cmd[0].lower() == "loglevel":
 		if len(cmd) > 1:
 			logLevel = int(cmd[1])
 		else:
-			print "loglevel [int]"
+			return "loglevel [int]"
 	if cmd[0].lower() == "log":
 		if len(cmd) > 1:
 			log = " ".join(cmd[1:])
 		else:
-			print "log [filename]"
+			return "log [filename]"
 	if cmd[0].lower() == "echo":
 		if len(cmd) > 1:
-			print " ".join(cmd[1:])
+			return " ".join(cmd[1:])
+	return ""
 
 class GUITk:
 	def __init__(self,root):
@@ -365,7 +422,7 @@ class GUITk:
 		self.table = ttk.Treeview(self.fr, show='headings', selectmode='browse', height=10)
 		self.table.pack(fill=BOTH, expand=YES)
 		self.table.grid(column=0, row=0, sticky="nsew")
-		self.table["columns"]=("vendor","addr","port","name","mac","sn")
+		self.table["columns"]=("ID","vendor","addr","port","name","mac","sn")
 		self.table["displaycolumns"]=("vendor","addr","port","name","mac","sn")
 
 		self.table.heading("vendor", text=_("Vendor"), anchor='w')
@@ -376,11 +433,11 @@ class GUITk:
 		self.table.heading("sn", text=_("SN"), anchor='w')
 
 		self.table.column("vendor", stretch=0, width=50)
-		self.table.column("addr", stretch=0, width=90)
-		self.table.column("port", stretch=0, width=40)
-		self.table.column("name", stretch=0, width=90)
-		self.table.column("mac", stretch=0, width=100)
-		self.table.column("sn", stretch=0, width=110)
+		self.table.column("addr", stretch=0, width=100)
+		self.table.column("port", stretch=0, width=50)
+		self.table.column("name", stretch=0, width=100)
+		self.table.column("mac", stretch=0, width=110)
+		self.table.column("sn", stretch=0, width=120)
 
 		self.scrollY = ttk.Scrollbar(self.fr, orient=VERTICAL)
 		self.scrollY.config(command=self.table.yview)
@@ -392,34 +449,39 @@ class GUITk:
 
 		self.table.bind('<ButtonRelease>', self.select)
 
+		self.l0 = ttk.Label(self.fr_config, text=_("Name"))
+		self.l0.grid(row=0, column=0,pady=3,padx=5,sticky=W+N)
+		self.name = ttk.Entry(self.fr_config, width=15, font="6")
+		self.name.grid(row=0, column=1,pady=3,padx=5,sticky=W+N)
 		self.l1 = ttk.Label(self.fr_config, text=_("IP Address"))
-		self.l1.grid(row=0, column=0,pady=3,padx=5,sticky=W+N)
+		self.l1.grid(row=1, column=0,pady=3,padx=5,sticky=W+N)
 		self.addr = ttk.Entry(self.fr_config, width=15, font="6")
-		self.addr.grid(row=0, column=1,pady=3,padx=5,sticky=W+N)
+		self.addr.grid(row=1, column=1,pady=3,padx=5,sticky=W+N)
 		self.l2 = ttk.Label(self.fr_config, text=_("Mask"))
-		self.l2.grid(row=1, column=0,pady=3,padx=5,sticky=W+N)
+		self.l2.grid(row=2, column=0,pady=3,padx=5,sticky=W+N)
 		self.mask = ttk.Entry(self.fr_config, width=15, font="6")
-		self.mask.grid(row=1, column=1,pady=3,padx=5,sticky=W+N)
+		self.mask.grid(row=2, column=1,pady=3,padx=5,sticky=W+N)
 		self.l3 = ttk.Label(self.fr_config, text=_("Gateway"))
-		self.l3.grid(row=2, column=0,pady=3,padx=5,sticky=W+N)
+		self.l3.grid(row=3, column=0,pady=3,padx=5,sticky=W+N)
 		self.gate = ttk.Entry(self.fr_config, width=15, font="6")
-		self.gate.grid(row=2, column=1,pady=3,padx=5,sticky=W+N)
+		self.gate.grid(row=3, column=1,pady=3,padx=5,sticky=W+N)
 		self.aspc = ttk.Button(self.fr_config, text=_("As on PC"),command=self.addr_pc)
-		self.aspc.grid(row=3, column=1,pady=3,padx=5,sticky="ew")
+		self.aspc.grid(row=4, column=1,pady=3,padx=5,sticky="ew")
 		self.l4 = ttk.Label(self.fr_config, text=_("HTTP Port"))
-		self.l4.grid(row=4, column=0,pady=3,padx=5,sticky=W+N)
+		self.l4.grid(row=5, column=0,pady=3,padx=5,sticky=W+N)
 		self.http = ttk.Entry(self.fr_config, width=5, font="6")
-		self.http.grid(row=4, column=1,pady=3,padx=5,sticky=W+N)
+		self.http.grid(row=5, column=1,pady=3,padx=5,sticky=W+N)
 		self.l5 = ttk.Label(self.fr_config, text=_("TCP Port"))
-		self.l5.grid(row=5, column=0,pady=3,padx=5,sticky=W+N)
+		self.l5.grid(row=6, column=0,pady=3,padx=5,sticky=W+N)
 		self.tcp = ttk.Entry(self.fr_config, width=5, font="6")
-		self.tcp.grid(row=5, column=1,pady=3,padx=5,sticky=W+N)
+		self.tcp.grid(row=6, column=1,pady=3,padx=5,sticky=W+N)
 		self.l6 = ttk.Label(self.fr_config, text=_("Password"))
-		self.l6.grid(row=6, column=0,pady=3,padx=5,sticky=W+N)
+		self.l6.grid(row=7, column=0,pady=3,padx=5,sticky=W+N)
 		self.passw = ttk.Entry(self.fr_config, width=15, font="6")
-		self.passw.grid(row=6, column=1,pady=3,padx=5,sticky=W+N)
+		self.passw.grid(row=7, column=1,pady=3,padx=5,sticky=W+N)
 		self.aply = ttk.Button(self.fr_config, text=_("Apply"),command=self.setconfig)
-		self.aply.grid(row=7, column=1,pady=3,padx=5,sticky="ew")
+		self.aply.grid(row=8, column=1,pady=3,padx=5,sticky="ew")
+		
 		self.l7 = ttk.Label(self.fr_tools, text=_("Vendor"))
 		self.l7.grid(row=0, column=0,pady=3,padx=5,sticky="wns")
 		self.ven = ttk.Combobox(self.fr_tools, width=10)
@@ -449,8 +511,10 @@ class GUITk:
 			ProcessCMD(["search"])
 		else:
 			ProcessCMD(["search",self.ven.get()])
+		self.pop()
+	def pop(self):
 		for dev in devices:
-			self.table.insert('', 'end', values=(devices[dev]['Brand'], GetIP(devices[dev]['HostIP']), devices[dev]['TCPPort'], devices[dev]['HostName'], devices[dev]['MAC'],  devices[dev]['SN']))
+			self.table.insert('', 'end', values=(dev,devices[dev]['Brand'], GetIP(devices[dev]['HostIP']), devices[dev]['TCPPort'], devices[dev]['HostName'], devices[dev]['MAC'],  devices[dev]['SN']))
 	def clear(self):
 		global devices
 		for i in self.table.get_children():
@@ -459,22 +523,29 @@ class GUITk:
 	def select(self, event):
 		if len(self.table.selection()) == 0:
 			return
-		_mac = self.table.item(self.table.selection()[0], option='values')[4]
+		dev = self.table.item(self.table.selection()[0], option='values')[0]
+		self.name.delete(0, END)
+		self.name.insert(END, devices[dev]['HostName'])
 		self.addr.delete(0, END)
-		self.addr.insert(END, GetIP(devices[_mac]['HostIP']))
+		self.addr.insert(END, GetIP(devices[dev]['HostIP']))
 		self.mask.delete(0, END)
-		self.mask.insert(END, GetIP(devices[_mac]['Submask']))
+		self.mask.insert(END, GetIP(devices[dev]['Submask']))
 		self.gate.delete(0, END)
-		self.gate.insert(END, GetIP(devices[_mac]['GateWay']))
+		self.gate.insert(END, GetIP(devices[dev]['GateWay']))
 		self.http.delete(0, END)
-		self.http.insert(END, devices[_mac]['HttpPort'])
+		self.http.insert(END, devices[dev]['HttpPort'])
 		self.tcp.delete(0, END)
-		self.tcp.insert(END, devices[_mac]['TCPPort'])
+		self.tcp.insert(END, devices[dev]['TCPPort'])
 	def setconfig(self):
-		_mac = self.table.item(self.table.selection()[0], option='values')[4]
-		devices[_mac][u'TCPPort'] = int(self.tcp.get())
-		devices[_mac][u'HttpPort'] = int(self.http.get())
-		ProcessCMD(["config",_mac,self.addr.get(),self.mask.get(),self.gate.get(),self.passw.get()])
+		dev = self.table.item(self.table.selection()[0], option='values')[0]
+		devices[dev][u'TCPPort'] = int(self.tcp.get())
+		devices[dev][u'HttpPort'] = int(self.http.get())
+		devices[dev][u'HostName'] = self.name.get()
+		result = ProcessCMD(["config",dev,self.addr.get(),self.mask.get(),self.gate.get(),self.passw.get()])
+		if result['Ret'] == 100:
+			self.table.item(self.table.selection()[0], values=(dev,devices[dev]['Brand'], GetIP(devices[dev]['HostIP']), devices[dev]['TCPPort'], devices[dev]['HostName'], devices[dev]['MAC'],  devices[dev]['SN']))
+		else:
+			showerror(_("Error"),CODES[result['Ret']])
 	def export(self):
 		filename = asksaveasfilename(filetypes = ((_("JSON files"), "*.json")
 								,(_("HTML files"), "*.html;*.htm")
@@ -502,7 +573,8 @@ class GUITk:
 			_mac="all"
 		else:
 			_mac = self.table.item(self.table.selection()[0], option='values')[4]
-		ProcessCMD(["flash",_mac,filename])
+		result = ProcessCMD(["flash",_mac,filename])
+		if asattr(result, 'has_key') and result.has_key('Ret') and CODES.has_key('Ret'): showerror(_("Error"),CODES[result['Ret']])
 
 searchers = {"xm":SearchXM,"dahua":SearchDahua,"fros":SearchFros}
 configure = {"xm":ConfigXM,"fros":ConfigFros}#,"dahua":ConfigDahua
@@ -527,5 +599,9 @@ if __name__ == "__main__":
 	while True:
 		data = raw_input("> ").split(";")
 		for cmd in data:
-			ProcessCMD(cmd.split(" "))
+			result = ProcessCMD(cmd.split(" "))
+			if result.has_key('Ret'):
+				print CODES[result['Ret']]
+			else:
+				print result
 	sys.exit(1)
