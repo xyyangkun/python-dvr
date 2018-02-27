@@ -159,22 +159,20 @@ def SearchXM(devices):
 	server = socket(AF_INET, SOCK_DGRAM)
 	server.bind(('',34569))
 	server.settimeout(1)
-	client = socket(AF_INET, SOCK_DGRAM)
-	client.setsockopt(SOL_SOCKET, SO_REUSEADDR, 1)
-	client.setsockopt(SOL_SOCKET, SO_BROADCAST, 1)
-	client.sendto(struct.pack('BBHIIHHI',255,0,0,0,0,0,1530,0),("255.255.255.255", 34569))
+	server.setsockopt(SOL_SOCKET, SO_REUSEADDR, 1)
+	server.setsockopt(SOL_SOCKET, SO_BROADCAST, 1)
+	server.sendto(struct.pack('BBHIIHHI',255,0,0,0,0,0,1530,0),("255.255.255.255", 34569))
 	while True:
 		try:
 			data = server.recvfrom(1024)
 			head,ver,typ,session,packet,info,msg,leng = struct.unpack('BBHIIHHI',data[0][:20])
 			if (msg == 1531) and leng > 0:
-				answer = json.loads(data[0][20:19+leng],encoding="utf8")
+				answer = json.loads(data[0][20:20+leng].replace('\x00',''),encoding="utf8")
 				if not devices.has_key(answer['NetWork.NetCommon']['MAC']):
 					devices[answer['NetWork.NetCommon']['MAC']] = answer['NetWork.NetCommon']
 					devices[answer['NetWork.NetCommon']['MAC']][u'Brand'] = u"xm"
 		except:
 			break
-	client.close()
 	server.close()
 	return devices
 
@@ -182,10 +180,9 @@ def SearchDahua(devices):
 	server = socket(AF_INET, SOCK_DGRAM)
 	server.bind(('',5050))
 	server.settimeout(1)
-	client = socket(AF_INET, SOCK_DGRAM)
-	client.setsockopt(SOL_SOCKET, SO_REUSEADDR, 1)
-	client.setsockopt(SOL_SOCKET, SO_BROADCAST, 1)
-	client.sendto('\xa3\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x02\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00',("255.255.255.255", 5050))
+	server.setsockopt(SOL_SOCKET, SO_REUSEADDR, 1)
+	server.setsockopt(SOL_SOCKET, SO_BROADCAST, 1)
+	server.sendto('\xa3\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x02\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00',("255.255.255.255", 5050))
 	while True:
 		try:
 			data = server.recvfrom(1024)
@@ -204,19 +201,18 @@ def SearchDahua(devices):
 					devices[answer[u'MAC']] = answer
 		except:
 			break
-	client.close()
 	server.close()
 	return devices
 
 def SearchFros(devices):
-	client = socket(AF_INET, SOCK_DGRAM)
-	client.setsockopt(SOL_SOCKET, SO_REUSEADDR, 1)
-	client.setsockopt(SOL_SOCKET, SO_BROADCAST, 1)
-	client.settimeout(1)
-	client.sendto("MO_I\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x04\x00\x00\x00\x04\x00\x00\x00\x00\x00\x00\x01", ("255.255.255.255", 10000))
+	server = socket(AF_INET, SOCK_DGRAM)
+	server.setsockopt(SOL_SOCKET, SO_REUSEADDR, 1)
+	server.setsockopt(SOL_SOCKET, SO_BROADCAST, 1)
+	server.settimeout(1)
+	server.sendto("MO_I\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x04\x00\x00\x00\x04\x00\x00\x00\x00\x00\x00\x01", ("255.255.255.255", 10000))
 	while True:
 		try:
-			data = client.recvfrom(1024)
+			data = server.recvfrom(1024)
 			cmd, legth = struct.unpack('<4xh9xi4x',data[0][:23])
 			ser, name = struct.unpack('<13s21s',data[0][23:57])
 			ip, mask, gate, dns = struct.unpack('<IIII',data[0][57:73])
@@ -228,10 +224,10 @@ def SearchFros(devices):
 			ver = ".".join([str(ord(x)) for x in ver])
 			webver = ".".join([str(ord(x)) for x in webver])
 			if not devices.has_key(mac):
-				devices[mac] = { u"Brand":u"fros",u"GateWay" : gate, u"DNS": dns, u"HostIP" : ip, u"HostName" : name, u"HttpPort" : 80, u"TCPPort": 80, u"MAC" : mac, u"MaxBps" : 0, u"MonMode" : u"HTTP", u"SN" : ser, u"Submask" : mask, u"SwVer": ver, u"WebVer": webver }
+				devices[mac] = { u'Brand':'fros',u'GateWay' : gate, u'DNS': dns, u'HostIP' : ip, u'HostName' : name, u'HttpPort' : 80, u'TCPPort': 80, u'MAC' : mac, u'MaxBps' : 0, u'MonMode' : u"HTTP", u'SN' : ser, u'Submask' : mask, u'SwVer': ver, u'WebVer': webver }
 		except:
 			break
-	client.close()
+	server.close()
 	return devices
 
 def ConfigXM(data):
@@ -252,64 +248,54 @@ def ConfigXM(data):
 	config[u'TransferPlan'] = devices[data[1]][u'TransferPlan']
 	config[u'UDPPort'] = devices[data[1]][u'UDPPort']
 	config[u'UseHSDownLoad'] = devices[data[1]][u'UseHSDownLoad']
-	config[u'Username'] = "admin"
+	config[u'Username'] = 'admin'
 	config[u'Password'] = sofia_hash(data[5])
 	devices[data[1]][u'GateWay'] = config[u'GateWay']
 	devices[data[1]][u'HostIP'] = config[u'HostIP']
 	devices[data[1]][u'Submask'] = config[u'Submask']
-	config = json.dumps(config,encoding="utf8")+"\n"
+	config = json.dumps(config, ensure_ascii=False, sort_keys=True, separators=(', ', ' : ')).encode('utf8')
 	server = socket(AF_INET, SOCK_DGRAM)
 	server.bind(('',34569))
 	server.settimeout(1)
-	client = socket(AF_INET, SOCK_DGRAM)
-	client.setsockopt(SOL_SOCKET, SO_REUSEADDR, 1)
-	client.setsockopt(SOL_SOCKET, SO_BROADCAST, 1)
+	server.setsockopt(SOL_SOCKET, SO_REUSEADDR, 1)
+	server.setsockopt(SOL_SOCKET, SO_BROADCAST, 1)
 	#(255, version=0, type=254, 0, 0, info=0, msg=1532, len)
-	client.sendto(struct.pack('BBHIIHHI',255,0,254,0,0,0,1532,len(config)+2)+config+'\x0a\x00',("255.255.255.255", 34569))
+	server.sendto(struct.pack('BBHIIHHI',255,0,254,0,0,0,1532,len(config)+2)+config+'\x0a\x00',('255.255.255.255', 34569))
 	answer = {}
 	while True:
 		try:
-			#('\xff\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\xfd\x05,\x00\x00\x00{"Ret" : 100, "SessionID" : "0x00000000" }\x00\x00', ('192.168.0.110', 55705))
 			data = server.recvfrom(1024)
-			typ,leng = struct.unpack('<BxI',data[0][14:20])
-			if (typ == 0xfd or data[0][1] == '\x01') and leng > 0:
-				answer = json.loads(data[0][20:19+leng],encoding="utf8")
+			head,ver,typ,session,packet,info,msg,leng = struct.unpack('BBHIIHHI',data[0][:20])
+			if (msg == 1533) and leng > 0:
+				answer = json.loads(data[0][20:20+leng].replace('\x00',''),encoding='utf8')
 		except:
 			break
 			e = 1
-	client.close()
 	server.close()
 	return answer
 	
 def ConfigFros(data):
 	#('MO_I\x02\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00=\x00\x00\x00=\x00\x00\x00\x00\x00\x00\x010001FFBC1113\x00admin\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\xc0\xa8\x00d\xff\xff\xff\x00\xc0\xa8\x00\x01\xc0\xa8\x00\x01\x00P', ('192.168.0.201', 10000))
-	#server = socket(AF_INET, SOCK_DGRAM)
-	#server.bind(('',10000))
-	#server.settimeout(1)
 	client = socket(AF_INET, SOCK_DGRAM)
 	client.setsockopt(SOL_SOCKET, SO_REUSEADDR, 1)
 	client.setsockopt(SOL_SOCKET, SO_BROADCAST, 1)
-	client.sendto(struct.pack('<4sB10xB3xB6xB12sx12sx12sxIIIIxB','MO_I',2,61,61,1,devices[data[1]][u'MAC'].replace(":",""),'admin',data[5],int(SetIP(data[2]),16),int(SetIP(data[3]),16),int(SetIP(data[4]),16),int(SetIP(data[4]),16),80),("255.255.255.255", 10000))
+	client.sendto(struct.pack('<4sB10xB3xB6xB12sx12sx12sxIIIIxB','MO_I',2,61,61,1,devices[data[1]][u'MAC'].replace(':',''),'admin',data[5],int(SetIP(data[2]),16),int(SetIP(data[3]),16),int(SetIP(data[4]),16),int(SetIP(data[4]),16),80),("255.255.255.255", 10000))
 	answer = {}
 	while True:
 		try:
-			#data = server.recvfrom(1024)
-			#print data
 			data = client.recvfrom(1024)
-			#print data
 			if data[0][4] == '\x03':
 				s, type, n, n, result = struct.unpack('<4sB10xB3xB3xBx',data[0])
 				if result == 0:
-					answer[u'Result'] = "OK"
+					answer[u'Result'] = 'OK'
 				else:
-					answer[u'Result'] = "ERROR"
+					answer[u'Result'] = 'ERROR'
 					answer[u'Error'] = result
 			break
 		except:
 			break
 			e = 1
 	client.close()
-	#server.close()
 	return answer
 
 
