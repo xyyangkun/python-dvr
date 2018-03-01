@@ -230,6 +230,27 @@ def SearchFros(devices):
 	server.close()
 	return devices
 
+def SearchWans(devices):
+	client = socket(AF_INET, SOCK_DGRAM)
+	client.setsockopt(SOL_SOCKET, SO_REUSEADDR, 1)
+	client.setsockopt(SOL_SOCKET, SO_BROADCAST, 1)
+	client.settimeout(1.3)
+	client.sendto('DH\x01\x01',("255.255.255.255", 8600))
+	while True:
+		try:
+			data = client.recvfrom(1024)
+			mac = [0,0,0,0,0,0]
+			head, pver, type, ip, mask, gate, dns2, dns, mac[0], mac[1], mac[2], mac[3], mac[4], mac[5], port, ser, name, ver, webver, dhcp = struct.unpack('2sBB16s16s16s16s16s6BH32s32s48x16s16s65xB',data[0][:302])
+			mac = "%02x:%02x:%02x:%02x:%02x:%02x"%(mac[0], mac[1], mac[2], mac[3], mac[4], mac[5])
+			name,ser,ver,webver = name.replace('\x00',''),ser.replace('\x00',''),ver.replace('\x00',''),webver.replace('\x00','')
+			ip,mask,gate,dns = SetIP(ip.replace('\x00','')),SetIP(mask.replace('\x00','')),SetIP(gate.replace('\x00','')),SetIP(dns.replace('\x00',''))
+			if not devices.has_key(mac):
+				devices[mac] = { u"Brand":u"wans",u"GateWay" : gate, u"DNS": dns, u"HostIP" : ip, u"HostName" : name, u"HttpPort" : port, u"TCPPort": port, u"MAC" : mac, u"MaxBps" : 0, u"MonMode" : u"HTTP", u"SN" : ser, u"Submask" : mask, u"SwVer": ver, u"WebVer": webver }
+		except:
+			break
+	client.close()
+	return devices
+
 def ConfigXM(data):
 	config = {}
 	config[u'DvrMac'] = devices[data[1]][u'MAC']
@@ -472,7 +493,7 @@ class GUITk:
 		self.l7.grid(row=0, column=0,pady=3,padx=5,sticky="wns")
 		self.ven = ttk.Combobox(self.fr_tools, width=10)
 		self.ven.grid(row=0, column=1,padx=5,sticky="w")
-		self.ven['values'] = [_("All"), "XM", "Dahua", "Fros"]
+		self.ven['values'] = [_("All"), "XM", "Dahua", "Fros", "Wans"]
 		self.ven.current(0)
 		self.search = ttk.Button(self.fr_tools, text=_("Search"),command=self.search)
 		self.search.grid(row=0, column=2,pady=5,padx=5,sticky=W+N)
@@ -510,6 +531,7 @@ class GUITk:
 		if len(self.table.selection()) == 0:
 			return
 		dev = self.table.item(self.table.selection()[0], option='values')[0]
+		if logLevel >= 20 : print json.dumps(devices[dev], indent = 4, sort_keys = True)
 		self.name.delete(0, END)
 		self.name.insert(END, devices[dev]['HostName'])
 		self.addr.delete(0, END)
@@ -562,7 +584,7 @@ class GUITk:
 		result = ProcessCMD(["flash",_mac,filename])
 		if hasattr(result, 'has_key') and result.has_key('Ret') and CODES.has_key('Ret'): showerror(_("Error"),CODES[result['Ret']])
 
-searchers = {"xm":SearchXM,"dahua":SearchDahua,"fros":SearchFros}
+searchers = {"wans":SearchWans,"xm":SearchXM,"dahua":SearchDahua,"fros":SearchFros,}
 configure = {"xm":ConfigXM,"fros":ConfigFros}#,"dahua":ConfigDahua
 flashers  = {}#"xm":FlashXM,"dahua":FlashDahua,"fros":FlashFros
 logLevel = 10
