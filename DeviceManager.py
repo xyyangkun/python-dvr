@@ -240,7 +240,7 @@ def SearchWans(devices):
 		try:
 			data = client.recvfrom(1024)
 			mac = [0,0,0,0,0,0]
-			head, pver, type, ip, mask, gate, dns2, dns, mac[0], mac[1], mac[2], mac[3], mac[4], mac[5], port, ser, name, ver, webver, dhcp = struct.unpack('2sBB16s16s16s16s16s6BH32s32s48x16s16s65xB',data[0][:302])
+			head, pver, type, ip, mask, gate, dns2, dns, mac[0], mac[1], mac[2], mac[3], mac[4], mac[5], port, ser, name, ver, webver, user, passwd, dhcp = struct.unpack('2sBB16s16s16s16s16s6BH32s32s48x16s16s32s32sxB22x',data[0][:324])
 			mac = "%02x:%02x:%02x:%02x:%02x:%02x"%(mac[0], mac[1], mac[2], mac[3], mac[4], mac[5])
 			name,ser,ver,webver = name.replace('\x00',''),ser.replace('\x00',''),ver.replace('\x00',''),webver.replace('\x00','')
 			ip,mask,gate,dns = SetIP(ip.replace('\x00','')),SetIP(mask.replace('\x00','')),SetIP(gate.replace('\x00','')),SetIP(dns.replace('\x00',''))
@@ -289,6 +289,8 @@ def ConfigXM(data):
 			head,ver,typ,session,packet,info,msg,leng = struct.unpack('BBHIIHHI',data[0][:20])
 			if (msg == 1533) and leng > 0:
 				answer = json.loads(data[0][20:20+leng].replace('\x00',''),encoding='utf8')
+			if answer['Ret'] != 100:
+				answer['Error'] = CODES[answer['Ret']]
 		except:
 			break
 			e = 1
@@ -296,7 +298,9 @@ def ConfigXM(data):
 	return answer
 	
 def ConfigFros(data):
-	#('MO_I\x02\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00=\x00\x00\x00=\x00\x00\x00\x00\x00\x00\x010001FFBC1113\x00admin\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\xc0\xa8\x00d\xff\xff\xff\x00\xc0\xa8\x00\x01\xc0\xa8\x00\x01\x00P', ('192.168.0.201', 10000))
+	devices[data[1]][u'GateWay'] = SetIP(data[4])
+	devices[data[1]][u'HostIP'] = SetIP(data[2])
+	devices[data[1]][u'Submask'] = SetIP(data[3])
 	client = socket(AF_INET, SOCK_DGRAM)
 	client.setsockopt(SOL_SOCKET, SO_REUSEADDR, 1)
 	client.setsockopt(SOL_SOCKET, SO_BROADCAST, 1)
@@ -308,9 +312,9 @@ def ConfigFros(data):
 			if data[0][4] == '\x03':
 				s, type, n, n, result = struct.unpack('<4sB10xB3xB3xBx',data[0])
 				if result == 0:
-					answer[u'Result'] = 'OK'
+					answer[u'Ret'] = 100
 				else:
-					answer[u'Result'] = 'ERROR'
+					answer[u'Ret'] = 101
 					answer[u'Error'] = result
 			break
 		except:
@@ -319,6 +323,39 @@ def ConfigFros(data):
 	client.close()
 	return answer
 
+def ConfigWans(data):
+	devices[data[1]][u'GateWay'] = SetIP(data[4])
+	devices[data[1]][u'HostIP'] = SetIP(data[2])
+	devices[data[1]][u'Submask'] = SetIP(data[3])
+	devices[data[1]][u'TCPPort'] = devices[data[1]][u'HttpPort']
+	client = socket(AF_INET, SOCK_DGRAM)
+	#client.bind(('',8600))
+	client.settimeout(1)
+	client.setsockopt(SOL_SOCKET, SO_REUSEADDR, 1)
+	client.setsockopt(SOL_SOCKET, SO_BROADCAST, 1)
+	mac = [int(x,16) for x in data[1].split(":")]
+	client.sendto(struct.pack('2sBB16s16s16s16s16s6BH32s32s48x16s16s32s32sxB22x','DH', 2, 1, data[2], data[3], data[4], '8.8.8.8', data[4], mac[0], mac[1], mac[2], mac[3], mac[4], mac[5], devices[data[1]][u'HttpPort'], devices[data[1]][u'SN'], devices[data[1]][u'HostName'], devices[data[1]][u'SwVer'], devices[data[1]][u'WebVer'], 'admin', data[5], 0),("255.255.255.255", 8600))
+	answer = {}
+	while True:
+		try:
+			data = client.recvfrom(1024)
+			mac = [0,0,0,0,0,0]
+			head, pver, type, ip, mask, gate, dns2, dns, mac[0], mac[1], mac[2], mac[3], mac[4], mac[5], port, ser, name, ver, webver, user, passwd, dhcp, err = struct.unpack('2sBB16s16s16s16s16s6BH32s32s48x16s16s32s32sxB22xB',data[0][:325])
+			mac = "%02x:%02x:%02x:%02x:%02x:%02x"%(mac[0], mac[1], mac[2], mac[3], mac[4], mac[5])
+			name,ser,ver,webver = name.replace('\x00',''),ser.replace('\x00',''),ver.replace('\x00',''),webver.replace('\x00','')
+			ip,mask,gate,dns = SetIP(ip.replace('\x00','')),SetIP(mask.replace('\x00','')),SetIP(gate.replace('\x00','')),SetIP(dns.replace('\x00',''))
+			devices[mac] = { u"Brand":u"wans",u"GateWay" : gate, u"DNS": dns, u"HostIP" : ip, u"HostName" : name, u"HttpPort" : port, u"TCPPort": port, u"MAC" : mac, u"MaxBps" : 0, u"MonMode" : u"HTTP", u"SN" : ser, u"Submask" : mask, u"SwVer": ver, u"WebVer": webver }
+			if err == 0:
+				answer[u'Ret'] = 100
+			else:
+				answer[u'Ret'] = 101
+				answer['Error'] = CODES[answer['Ret']]
+			break
+		except:
+			break
+			e = 1
+	client.close()
+	return answer
 
 def ProcessCMD(cmd):
 	global log,logLevel,devices,searchers,configure,flashers
@@ -585,7 +622,7 @@ class GUITk:
 		if hasattr(result, 'has_key') and result.has_key('Ret') and CODES.has_key('Ret'): showerror(_("Error"),CODES[result['Ret']])
 
 searchers = {"wans":SearchWans,"xm":SearchXM,"dahua":SearchDahua,"fros":SearchFros,}
-configure = {"xm":ConfigXM,"fros":ConfigFros}#,"dahua":ConfigDahua
+configure = {"wans":ConfigWans,"xm":ConfigXM,"fros":ConfigFros}#,"dahua":ConfigDahua
 flashers  = {}#"xm":FlashXM,"dahua":FlashDahua,"fros":FlashFros
 logLevel = 10
 if __name__ == "__main__":
