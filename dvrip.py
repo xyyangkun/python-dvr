@@ -108,7 +108,7 @@ class DVRIPCam(object):
 	def clearAlarm(self):
 		self.alarm_func = None
 	def alarmStart(self):
-		self.alarm = threading.Thread(name="DVRAlarm",target=self.alarm_thread, args=[self.busy])
+		self.alarm = threading.Thread(name="DVRAlarm%08X"%self.session,target=self.alarm_thread, args=[self.busy])
 		self.alarm.start()
 		return self.get(1500,"")
 	def alarm_thread(self, event):
