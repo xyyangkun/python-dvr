@@ -27,7 +27,11 @@ info["OSDInfo"][0]["OSDInfoWidget"]["PreviewBlend"] = True
 #info["OSDInfo"][0]["OSDInfoWidget"]["RelativePos"] = [6144,6144,8192,8192]
 cam.set_info("fVideo.OSDInfo", info)
 #enc_info = cam.get_info("Simplify.Encode")
-
+#Alarm example
+def alarm(content, ids):
+        print content
+cam.setAlarm(alarm)
+cam.alarmStart()
 #cam.get_encode_info()
 #sleep(1)
 #cam.get_camera_info()
@@ -37,4 +41,4 @@ cam.set_info("fVideo.OSDInfo", info)
 #cam.set_info("Simplify.Encode", enc_info)
 #sleep(2)
 #print(cam.get_info("Simplify.Encode"))
-cam.close()
+#cam.close()
