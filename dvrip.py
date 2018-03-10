@@ -23,6 +23,8 @@ class DVRIPCam(object):
 		515 : "Upgrade successful"
 	}
 	QCODES = {
+		"AlarmInfo":1504,
+		"AlarmSet":1500,
 		"KeepAlive":1006,
 		"OPTimeQuery":1452,
 		"OPTimeSetting":1450,
@@ -31,8 +33,21 @@ class DVRIPCam(object):
 		"OPMachine":1450,
 		"OPMonitor":1413,
 		"OPTalk":1434,
+		"OPPTZControl":1400,
+		"OPNetKeyboard":1550,
 		"SystemFunction":1360,
 		"EncodeCapability":1360
+	}
+	KEY_CODES = {
+		"M":"Menu",
+		"I":"Info",
+		"E":"Esc",
+		"F":"Func",
+		"S":"Shift",
+		"L":"Left",
+		"U":"Up",
+		"R":"Right",
+		"D":"Down"
 	}
 	OK_CODES = [100,515]
 	def __init__(self, ip, user="admin", password= "", port = 34567):
@@ -51,7 +66,7 @@ class DVRIPCam(object):
 	def connect(self):
 		self.socket = socket(AF_INET, SOCK_STREAM)
 		self.socket.connect((self.ip, self.port))
-		self.socket.settimeout(.5)
+		self.socket.settimeout(.2)
 	def close(self):
 		self.alive.cancel()
 		self.socket.close()
@@ -110,7 +125,7 @@ class DVRIPCam(object):
 	def alarmStart(self):
 		self.alarm = threading.Thread(name="DVRAlarm%08X"%self.session,target=self.alarm_thread, args=[self.busy])
 		self.alarm.start()
-		return self.get(1500,"")
+		return self.get(self.QCODES["AlarmSet"],"")
 	def alarm_thread(self, event):
 		while True:
 			event.acquire()
@@ -120,7 +135,7 @@ class DVRIPCam(object):
 				reply = self.socket.recv(len_data)
 				self.packet_count += 1
 				reply = json.loads(reply[:-2],encoding="utf8")
-				if msgid == 1504 and self.session == session:
+				if msgid == self.QCODES["AlarmInfo"] and self.session == session:
 					if self.alarm_func != None: self.alarm_func(reply[reply['Name']], sequence_number)
 			except:
 				pass
@@ -132,6 +147,23 @@ class DVRIPCam(object):
 		self.send(self.QCODES["KeepAlive"],{"Name":"KeepAlive","SessionID":"0x%08X"%self.session})
 		self.alive = threading.Timer(self.alive_time, self.keep_alive)
 		self.alive.start()
+	def keyDown(self, key):
+		self.set(self.QCODES["OPNetKeyboard"], "OPNetKeyboard", { "Status" : "KeyDown" , "Value" : key })
+	def keyUp(self, key):
+		self.set(self.QCODES["OPNetKeyboard"], "OPNetKeyboard", { "Status" : "KeyUp" , "Value" : key })
+	def keyPress(self, key):
+		self.keyDown(key)
+		sleep(.3)
+		self.keyUp(key)
+	def keyScript(self, keys):
+		for k in keys:
+			if k != " " and self.KEY_CODES.has_key(k.upper()):
+				self.keyPress(self.KEY_CODES[k.upper()])
+			else:
+				sleep(1)
+	def ptz(self, cmd, ch = 0):
+		ptz_param = { "AUX" : { "Number" : 0, "Status" : "On" }, "Channel" : ch, "MenuOpts" : "Enter", "POINT" : { "bottom" : 0, "left" : 0, "right" : 0, "top" : 0 }, "Pattern" : "SetBegin", "Preset" : -1, "Step" : 5, "Tour" : 0 }
+		self.set(self.QCODES["OPPTZControl"], "OPPTZControl", { "Command" : cmd, "Parameter" : ptz_param })
 	def set_info(self, command, data):
 		return self.set(1040, command, data)
 	def set(self, code, command, data):
