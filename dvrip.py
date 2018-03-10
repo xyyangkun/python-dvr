@@ -51,7 +51,7 @@ class DVRIPCam(object):
 	def connect(self):
 		self.socket = socket(AF_INET, SOCK_STREAM)
 		self.socket.connect((self.ip, self.port))
-		self.socket.settimeout(.1)
+		self.socket.settimeout(.5)
 	def close(self):
 		self.alive.cancel()
 		self.socket.close()
