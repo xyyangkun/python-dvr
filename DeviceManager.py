@@ -282,18 +282,19 @@ def ConfigXM(data):
 	server.setsockopt(SOL_SOCKET, SO_BROADCAST, 1)
 	#(255, version=0, type=254, 0, 0, info=0, msg=1532, len)
 	server.sendto(struct.pack('BBHIIHHI',255,0,254,0,0,0,1532,len(config)+2)+config+'\x0a\x00',('255.255.255.255', 34569))
-	answer = {}
+	answer = {"Ret":203}
+	e=0
 	while True:
 		try:
 			data = server.recvfrom(1024)
 			head,ver,typ,session,packet,info,msg,leng = struct.unpack('BBHIIHHI',data[0][:20])
 			if (msg == 1533) and leng > 0:
 				answer = json.loads(data[0][20:20+leng].replace('\x00',''),encoding='utf8')
-			if answer['Ret'] != 100:
-				answer['Error'] = CODES[answer['Ret']]
+				break
 		except:
-			break
-			e = 1
+			e += 1
+			if e > 3:
+				break
 	server.close()
 	return answer
 	
@@ -315,7 +316,6 @@ def ConfigFros(data):
 					answer[u'Ret'] = 100
 				else:
 					answer[u'Ret'] = 101
-					answer[u'Error'] = result
 			break
 		except:
 			break
@@ -349,7 +349,6 @@ def ConfigWans(data):
 				answer[u'Ret'] = 100
 			else:
 				answer[u'Ret'] = 101
-				answer['Error'] = CODES[answer['Ret']]
 			break
 		except:
 			break
