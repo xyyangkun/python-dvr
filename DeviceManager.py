@@ -796,7 +796,7 @@ PageLayout:
 		if self.root.ids.ven.values.index(self.root.ids.ven.text) == 0:
 			ProcessCMD(["search"])
 		else:
-			ProcessCMD(["search",self.ven.get()])
+			ProcessCMD(["search",self.root.ids.ven.text])
 		self.pop()
 	def pop(self):
 		for dev in devices:
